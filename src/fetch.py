@@ -256,6 +256,19 @@ def main():
     new_dates = sorted(d for d in set().union(*[set(s) for _, s in ndx_ok])
                        if d > last["date"])
 
+    # [수정] 미국장이 아직 안 끝난 날의 값은 저장하지 않는다.
+    # 예약 실행이 몇 시간 밀려 미국 장중(한국 밤 11시 반 이후)에 돌면, 야후가 "오늘 진행 중인
+    # 가격"을 그날 종가처럼 돌려준다. 그 값을 저장하면 다음 실행의 재검증에서 실제 종가와
+    # 0.5% 넘게 어긋나 매번 실패한다 (2026-11-17 장중 값 27172.3 이 저장돼 생긴 문제).
+    from zoneinfo import ZoneInfo
+    _now_et = datetime.datetime.now(ZoneInfo("America/New_York"))
+    _today_et = _now_et.strftime("%Y%m%d")
+    _closed = (_now_et.hour, _now_et.minute) >= (16, 30)   # 16:00 마감 + 30분 여유
+    _skipped = [d for d in new_dates if d > _today_et or (d == _today_et and not _closed)]
+    if _skipped:
+        report["notes"].append(f"장 마감 전이라 저장하지 않음: {', '.join(_skipped)}")
+    new_dates = [d for d in new_dates if d not in _skipped]
+
     prev_close = float(last["ndx"])
     for d in new_dates:
         ndx, ndx_vals = agree(ndx_ok, d, f"NDX {d}")
